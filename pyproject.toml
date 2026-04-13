@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ccpilot"
+version = "0.1.0"
+description = "Auto-pilot framework for Claude CLI: transparent routing of prompts to skills, subagents, and swarms."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "ccpilot" }]
+dependencies = []  # stdlib-only core
+
+[project.optional-dependencies]
+# Smart-routing upgrades: Haiku classifier escalation + dense skill embeddings.
+# Both are optional — ccpilot falls back to stdlib heuristics if missing.
+smart = ["anthropic>=0.40", "model2vec>=0.5", "numpy>=1.24"]
+# OpenAI-compatible gateways (LiteLLM, MiniMax, etc).
+openai = ["openai>=1.40"]
+# Nicer CLI output for install.py.
+cli = ["rich>=13"]
+extras = ["pydantic>=2", "httpx>=0.25", "rich>=13", "tomli; python_version<'3.11'"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+ccpilot = "ccpilot.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["ccpilot*"]
+
+[tool.setuptools.package-data]
+ccpilot = ["*.toml"]

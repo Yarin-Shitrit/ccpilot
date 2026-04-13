@@ -1,0 +1,44 @@
+# ccpilot configuration. All keys optional — defaults live in ccpilot/config.py.
+
+[router]
+# Master switch. Set false to disable routing entirely (cost management).
+# Can also be toggled ad-hoc via env var: CCPILOT_DISABLED=1
+enabled = true
+min_complexity_for_swarm = 0.55
+visible_routing_block = true
+
+[classifier]
+# Set llm_escalation = true and fill base_url/model to use your private Claude endpoint
+# for low-confidence prompts. Leave disabled for air-gapped/offline safety.
+llm_escalation = false
+# "anthropic" uses the anthropic SDK (or stdlib HTTP fallback against /v1/messages).
+# "openai" uses the openai SDK against OpenAI-compatible gateways (LiteLLM, MiniMax, etc).
+protocol = "anthropic"
+base_url = ""           # e.g. "https://claude.internal.corp/v1"
+model = ""              # e.g. "claude-haiku-4-5-20251001" or "minimax-m2"
+api_key_env = "CLAUDE_API_KEY"
+confidence_threshold = 0.6
+timeout_s = 8
+
+[swarm]
+max_agents = 5
+byzantine = false
+quorum_timeout_s = 60
+# "direct" (ThreadPoolExecutor) or "teams" (sqlite mailbox, ruflo-style)
+mode = "direct"
+
+[search]
+# Rerank skills by semantic similarity to the prompt (stdlib TF-IDF).
+# Sub-millisecond at <500 skills — on by default so short prompts
+# still surface the right skill even when tag/name matching fails.
+enabled = true
+
+[guidance]
+# Parse `## Rules` in CLAUDE.md (cwd + ~/.claude/) and enforce them on the
+# routing block (max_agents, banned skills, required skills, max complexity).
+enabled = true
+
+[learning]
+# PostToolUse hook records verdicts per intent; future confidence is nudged.
+# Requires: install.py --with-learning
+enabled = false
