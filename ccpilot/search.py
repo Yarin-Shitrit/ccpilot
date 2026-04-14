@@ -72,8 +72,19 @@ def _load_dense_model():
         from model2vec import StaticModel  # type: ignore[import-not-found]
     except ImportError:
         return None
+    # Prefer bundled model (works in air-gapped installs); fall back to HF Hub.
     try:
-        # Tiny static model — pure numpy at query time, no torch required.
+        from importlib.resources import files
+        bundled = files("ccpilot").joinpath("models/potion-base-8M")
+        if bundled.is_dir():
+            try:
+                _DENSE_MODEL = StaticModel.from_pretrained(str(bundled))
+                return _DENSE_MODEL
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
         _DENSE_MODEL = StaticModel.from_pretrained("minishlab/potion-base-8M")
         return _DENSE_MODEL
     except Exception:

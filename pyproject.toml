@@ -30,4 +30,4 @@ ccpilot = "ccpilot.__main__:main"
 include = ["ccpilot*"]
 
 [tool.setuptools.package-data]
-ccpilot = ["*.toml"]
+ccpilot = ["*.toml", "models/potion-base-8M/*"]

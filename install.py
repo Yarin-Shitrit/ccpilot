@@ -149,7 +149,17 @@ def install_hook(claude_dir: Path, dry_run: bool) -> Path:
     return target
 
 
-def install_skills(claude_dir: Path, dry_run: bool) -> list[str]:
+def _replace_path(target: Path, dry_run: bool) -> None:
+    if dry_run:
+        print(f"[dry] remove {target}")
+        return
+    if target.is_dir() and not target.is_symlink():
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+
+
+def install_skills(claude_dir: Path, dry_run: bool, update: bool = False) -> list[str]:
     src_dir = REPO / "ccpilot-skills"
     dst_dir = claude_dir / "skills"
     ensure_dir(dst_dir)
@@ -162,9 +172,12 @@ def install_skills(claude_dir: Path, dry_run: bool) -> list[str]:
         name = skill_dir.name
         target = dst_dir / name
         if target.exists():
-            target = dst_dir / (name + ".ccpilot")
-            if target.exists():
-                continue  # already installed variant — skip
+            if update:
+                _replace_path(target, dry_run)
+            else:
+                target = dst_dir / (name + ".ccpilot")
+                if target.exists():
+                    continue  # already installed variant — skip
         if dry_run:
             print(f"[dry] copy {skill_dir} -> {target}")
         else:
@@ -173,7 +186,7 @@ def install_skills(claude_dir: Path, dry_run: bool) -> list[str]:
     return installed
 
 
-def _install_tree(src_dir: Path, dst_dir: Path, dry_run: bool, suffix: str = ".ccpilot") -> list[str]:
+def _install_tree(src_dir: Path, dst_dir: Path, dry_run: bool, suffix: str = ".ccpilot", update: bool = False) -> list[str]:
     ensure_dir(dst_dir)
     installed: list[str] = []
     if not src_dir.is_dir():
@@ -183,9 +196,12 @@ def _install_tree(src_dir: Path, dst_dir: Path, dry_run: bool, suffix: str = ".c
             continue
         target = dst_dir / entry.name
         if target.exists():
-            target = dst_dir / (entry.name + suffix)
-            if target.exists():
-                continue
+            if update:
+                _replace_path(target, dry_run)
+            else:
+                target = dst_dir / (entry.name + suffix)
+                if target.exists():
+                    continue
         if dry_run:
             print(f"[dry] copy {entry} -> {target}")
         else:
@@ -197,19 +213,19 @@ def _install_tree(src_dir: Path, dst_dir: Path, dry_run: bool, suffix: str = ".c
     return installed
 
 
-def install_agents(claude_dir: Path, dry_run: bool) -> list[str]:
-    return _install_tree(REPO / "ccpilot-agents", claude_dir / "agents", dry_run)
+def install_agents(claude_dir: Path, dry_run: bool, update: bool = False) -> list[str]:
+    return _install_tree(REPO / "ccpilot-agents", claude_dir / "agents", dry_run, update=update)
 
 
-def install_commands(claude_dir: Path, dry_run: bool) -> list[str]:
-    return _install_tree(REPO / "ccpilot-commands", claude_dir / "commands", dry_run)
+def install_commands(claude_dir: Path, dry_run: bool, update: bool = False) -> list[str]:
+    return _install_tree(REPO / "ccpilot-commands", claude_dir / "commands", dry_run, update=update)
 
 
 def install_config(claude_dir: Path, dry_run: bool) -> Path:
     target = claude_dir / "ccpilot" / "config.toml"
     ensure_dir(target.parent)
     if target.exists():
-        return target
+        return target  # never overwrite user-edited config
     sample = REPO / "ccpilot" / "config.sample.toml"
     content = sample.read_text() if sample.exists() else "# ccpilot config — see defaults in ccpilot/config.py\n"
     if dry_run:
@@ -256,6 +272,11 @@ def install_python_deps(args: argparse.Namespace) -> None:
             info(f"installing smart extras: {', '.join(missing)}")
             if _pip_install(missing, args.dry_run):
                 ok("smart extras ready")
+        bundled = REPO / "ccpilot" / "models" / "potion-base-8M"
+        if (bundled / "model.safetensors").exists():
+            ok(f"bundled dense model present ({bundled.name}) — air-gapped ready")
+        else:
+            warn("bundled model2vec model missing — runtime will try HF Hub (fails in air-gapped envs)")
     elif args.no_smart:
         warn("skipping smart extras (--no-smart)")
     else:
@@ -292,12 +313,17 @@ def main(argv: list[str] | None = None) -> int:
                     help="Also install the openai SDK for OpenAI-compatible gateways.")
     ap.add_argument("--auto-deps", action="store_true",
                     help="Default-on smart deps unless --no-smart is passed.")
+    ap.add_argument("--update", action="store_true",
+                    help="Refresh existing installation: overwrite hooks, skills, agents, "
+                         "and commands in place (config.toml is preserved).")
     args = ap.parse_args(argv)
 
     banner()
     claude_dir = Path(args.claude_dir).expanduser()
     ensure_dir(claude_dir)
     info(f"target: {bold(str(claude_dir))}")
+    if args.update:
+        info("update mode — existing skills/agents/commands will be refreshed in place")
     if args.dry_run:
         warn("dry-run mode — no files will change")
 
@@ -325,12 +351,13 @@ def main(argv: list[str] | None = None) -> int:
     section("Config & skills")
     cfg_target = install_config(claude_dir, args.dry_run)
     ok(f"config:   {dim(str(cfg_target))}")
-    installed = [] if args.no_skills else install_skills(claude_dir, args.dry_run)
-    agents = [] if args.no_agents else install_agents(claude_dir, args.dry_run)
-    commands = [] if args.no_commands else install_commands(claude_dir, args.dry_run)
-    if installed: ok(f"skills:   {len(installed)} added")
-    if agents:    ok(f"agents:   {len(agents)} added")
-    if commands:  ok(f"commands: {len(commands)} added")
+    installed = [] if args.no_skills else install_skills(claude_dir, args.dry_run, args.update)
+    agents = [] if args.no_agents else install_agents(claude_dir, args.dry_run, args.update)
+    commands = [] if args.no_commands else install_commands(claude_dir, args.dry_run, args.update)
+    verb = "refreshed" if args.update else "added"
+    if installed: ok(f"skills:   {len(installed)} {verb}")
+    if agents:    ok(f"agents:   {len(agents)} {verb}")
+    if commands:  ok(f"commands: {len(commands)} {verb}")
 
     section("Python dependencies")
     install_python_deps(args)
